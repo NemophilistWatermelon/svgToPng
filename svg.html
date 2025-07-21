@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>svgToPng</title>
+    <style>
+        .result-item {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .result-item a {
+            text-decoration: unset;
+            color: rgb(128, 128, 128);
+            margin-left: 10px;
+        }
+    </style>
+    <script src="./lib/jszip-utils.min.js"></script>
+    <script src="./lib/FileSaver.min.js"></script>
+    <script src="./lib/jszip.min.js"></script>
+    <script src="./lib/moment.js"></script>
+    <!--    <script src="./lib/pizzip.min.js"></script>-->
+</head>
+<body>
+
+<div>
+    <h1>上传svg</h1>
+
+    <div class="config_panel">
+        <strong>设置面板</strong>
+        <div>
+            放大系数: <input id="id-eq-scale" value='1' type="text">
+            <span>如果设置这个属性代表 最终大小 = 图像画布 * 系数</span>
+        </div>
+        <div>
+            画布宽度: <input id="id-canvas-width" value="36" type="text"> <span>图像转换后的宽度 不设置 则默认读取上传svg 的宽度</span>
+        </div>
+        <div>
+            画布高度: <input id="id-canvas-height" value="36" type="text"> <span>图像转换后的高度 不设置 则默认读取上传svg 的高度</span>
+        </div>
+    </div>
+
+    <div class="control_area">
+        <input id="id-input-file" type="file" multiple>
+        <button id="id-convert">转换成png</button>
+        <button id="id-clear">清空</button>
+    </div>
+
+    <div id="id-preview"></div>
+
+
+    <h1>转换结果 ---
+        <button id="id-one-down-all">一键打包下载</button>
+    </h1>
+    <div id="id-result">
+
+    </div>
+</div>
+
+<script>
+    const getDom = {
+        preview: document.querySelector('#id-preview'),
+        result: document.querySelector('#id-result'),
+        inputFile: document.querySelector('#id-input-file'),
+        convert: document.querySelector('#id-convert'),
+        clear: document.querySelector('#id-clear'),
+        eqWidth: document.querySelector('#id-eq-scale'),
+        canvasSetWidth: document.querySelector('#id-canvas-width'),
+        canvasSetHeight: document.querySelector('#id-canvas-height'),
+        oneDownAll: document.querySelector('#id-one-down-all')
+    }
+
+    const oneDownAll_click_func = _ => {
+        getDom.oneDownAll.onclick = async ev => {
+            let all_link = getDom.result.querySelectorAll('.png_a_link')
+            console.log(all_link)
+            const zip = new JSZip()
+            // const zip = new PizZip()
+            all_link.forEach(item => {
+                let curBase64 = item.getAttribute('href').split(',')[1]
+                zip.file(item.getAttribute('download'), curBase64, { base64: true })
+            })
+
+            const content = await zip.generateAsync({type: 'blob'})
+            let zipName = moment().format('YYYY-MM-DDHH:mm:ss') + '-' + moment().unix()
+            saveAs(content, `${zipName}.zip`)
+        }
+
+    }
+
+    const input_change_func = (ev) => {
+        const IdinputFile = getDom.inputFile
+        const preview = getDom.preview
+        IdinputFile.addEventListener('change', fileEv => {
+            let files = fileEv.target.files
+            for (const fileReaderElement of files) {
+                var fileReader = new FileReader()
+                console.log(fileReaderElement)
+                fileReader.readAsDataURL(fileReaderElement)
+                fileReader.onload = ev => {
+                    const svgBase64Url = ev.target.result
+                    const img = document.createElement('img')
+                    img.className = 'svgImg'
+                    img.src = svgBase64Url
+                    img.dataset.filename = fileReaderElement.name
+                    preview.insertAdjacentElement('beforeend', img)
+                }
+            }
+
+
+        })
+
+        window.clearFile = () => {
+            IdinputFile.value = ''
+        }
+    }
+
+    const convert_btn_click_func = (ev) => {
+        const Idconvert = getDom.convert
+        Idconvert.onclick = ev => {
+            convertSvg()
+        }
+    }
+
+    const clear_btn_click_func = (ev) => {
+        const Idclear = getDom.clear
+        const preview = getDom.preview
+
+        Idclear.onclick = ev => {
+            preview.innerHTML = ''
+            getDom.result.innerHTML = ''
+            // 清空file
+            clearFile()
+        }
+
+    }
+
+    const __main = () => {
+        input_change_func()
+        clear_btn_click_func()
+        convert_btn_click_func()
+        oneDownAll_click_func()
+    }
+    window.addEventListener('DOMContentLoaded', _ => {
+        __main()
+    })
+
+
+    const convertSvg = () => {
+        const imgs = document.querySelectorAll('.svgImg')
+        let htmlStr = ``
+        imgs.forEach((item, idx) => {
+            const canvas = document.createElement('canvas')
+            const ctx = canvas.getContext('2d')
+            let {width, height} = item.getBoundingClientRect()
+            if (getDom.canvasSetWidth.value) {
+                width = Number(getDom.canvasSetWidth.value)
+            }
+            if (getDom.canvasSetHeight.value) {
+                height = Number(getDom.canvasSetHeight.value)
+            }
+            let scale = getDom.eqWidth.value ? Number(getDom.eqWidth.value) : window.devicePixelRatio
+            console.log({
+                width,
+                height,
+                scale
+            })
+            canvas.width = width * scale
+            canvas.height = height * scale
+            ctx.imageSmoothingEnabled = true
+            ctx.drawImage(item, 0, 0, width * scale, height * scale)
+            ctx.scale(scale, scale)
+
+            // 设置canvas 图片质量
+            const url = canvas.toDataURL(`image/png`)
+            canvas.remove()
+            let name = item.dataset.filename.replace('.svg', '')
+            let html = `
+            <div class="result-item">
+                <span>${idx + 1}: </span>
+                <img src="${url}"  />
+                <a class="png_a_link" href="${url}" download="${name}.png" class="download-btn">下载${name}.png</a>
+            </div>
+          `
+            htmlStr += html
+        })
+        getDom.result.innerHTML = ''
+        getDom.result.insertAdjacentHTML('beforeend', htmlStr)
+    }
+
+
+</script>
+</body>
+</html>
